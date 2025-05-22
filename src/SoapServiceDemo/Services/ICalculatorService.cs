@@ -1,11 +1,10 @@
 ﻿using CoreWCF;
 
-namespace SoapServiceDemo.Services
+namespace SoapServiceDemo.Services;
+
+[ServiceContract]
+public interface ICalculatorService
 {
-    [ServiceContract]
-    public interface ICalculatorService
-    {
-        [OperationContract]
-        int Add(int a, int b);
-    }
+    [OperationContract]
+    int Add(int a, int b);
 }

@@ -1,7 +1,10 @@
 ﻿using CoreWCF;
+using CoreWCF.Channels;
 using CoreWCF.Configuration;
 using CoreWCF.Description;
+using idunno.Authentication.Basic;
 using SoapServiceDemo.Services;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,28 +12,67 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServiceModelServices();
 builder.Services.AddServiceModelMetadata();
 
+builder.Services.AddAuthentication(BasicAuthenticationDefaults.AuthenticationScheme)
+    .AddBasic(options =>
+    {
+        options.Realm = "CalculatorService";
+        options.Events = new BasicAuthenticationEvents
+        {
+            OnValidateCredentials = context =>
+            {
+                // Configure your own credential validation logic here
+                if (context.Username == "admin" && context.Password == "password")
+                {
+                    var claims = new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, context.Username, ClaimValueTypes.String, context.Options.ClaimsIssuer),
+                    };
+
+                    context.Principal = new ClaimsPrincipal(new ClaimsIdentity(claims, context.Scheme.Name));
+                    context.Success();
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 // Add REST logic support (optional if not using MVC)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(); // Optional: Swagger UI
 
+// Build the app
 var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // CoreWCF SOAP service config
 app.UseServiceModel(serviceBuilder =>
 {
-    serviceBuilder.AddService<CalculatorService>(serviceOptions =>
-        {
-            serviceOptions.DebugBehavior.IncludeExceptionDetailInFaults = true;
-        });
+    serviceBuilder.AddService<CalculatorService>();
 
+    // 👇 Define a binding that requires HTTPS and credentials
+    var basicHttpBinding = new BasicHttpBinding
+    {
+        Security =
+        {
+            Mode = BasicHttpSecurityMode.Transport,
+            Transport =
+            {
+                ClientCredentialType = HttpClientCredentialType.Basic
+            }
+        }
+    };
+
+    // 👆 Add the service endpoint with the binding and authentication
     serviceBuilder.AddServiceEndpoint<CalculatorService, ICalculatorService>(
-            new BasicHttpBinding(), "/CalculatorService.svc");
+        basicHttpBinding, "/CalculatorService.svc");
 
     var metadataBehavior = app.Services.GetRequiredService<ServiceMetadataBehavior>();
-    metadataBehavior.HttpGetEnabled = true;
     metadataBehavior.HttpsGetEnabled = true;
-    metadataBehavior.HttpGetUrl = new Uri("http://localhost:59990/CalculatorService.svc");
-    metadataBehavior.HttpsGetUrl = new Uri("https://localhost:44348/CalculatorService.svc");
 });
 
 // ✅ Minimal REST endpoint - Optional
